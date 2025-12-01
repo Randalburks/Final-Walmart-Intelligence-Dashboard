@@ -1,4 +1,4 @@
-# Final-Project-Walmart-Intelligence-Dashboard - Executive Sales, Pricing, Forecasting & Scenario Dashboard
+# Final Project Walmart Intelligence Dashboard - Executive Sales, Pricing, Forecasting & Scenario Dashboard
 
 ### Michigan State University | CMSE 830 Midterm Project  
 **Author:** Randal Burks  
