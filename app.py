@@ -9,6 +9,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_percentage_error, mean_squared_error
+from sklearn.ensemble import RandomForestRegressor  # ADDED: second ML model for final project
 
 from src.preprocessing import load_merge, sample_panel
 from src.utils import (
@@ -28,20 +29,6 @@ st.set_page_config(
 st.title("Walmart Intelligence — Executive Sales, Pricing, Forecasting & Scenarios")
 st.caption(
     "KPIs, short-term outlook, price sensitivity, scenario testing, segment comparisons, and a one-page export."
-)
-
-# ---- Final project explanation block (new for final) ----
-st.markdown(
-    """
-This final project version of the dashboard extends the midterm app in several ways:
-
-- Adds a dedicated **IDA + Preprocessing** tab that documents how the three Walmart M5 CSV files are combined, encoded, and cleaned.  
-- Introduces **auto-insight text** and **chart explanations** so reviewers can see how each visualization supports decision-making.  
-- Surfaces an explicit narrative on **data collection, encoding strategy, and imputation**, aligning with the Data Science Excellence rubric.  
-- Provides a richer **Summary Export** section to produce a one-page, executive-style snapshot for the current slice.
-
-All descriptions are written in third person so the app can stand alone without the developer present.
-"""
 )
 
 # --------------------- Small helpers for page descriptions ---------------------
@@ -260,12 +247,6 @@ with tabs[0]:
         read="Data source: three CSVs shipped as ZIPs (calendar, prices, sales).",
     )
 
-    # Final-project note for reviewers
-    st.info(
-        "Final-project enhancement: this IDA tab was added so reviewers can explicitly see how data collection, "
-        "encoding, and imputation are handled before any modeling or business logic is applied."
-    )
-
     c1, c2, c3 = st.columns(3)
     c1.metric("Rows in sampled panel", f"{len(panel):,}")
     c2.metric("Columns", f"{panel.shape[1]}")
@@ -426,10 +407,10 @@ Several variables are encoded or engineered to make them usable for modeling and
 
 - **SNAP:** multiple state-specific SNAP flags from `calendar.csv` are collapsed into a single integer `snap` indicator (1 = SNAP active for that store's state, 0 = not active).  
 - **Events:** event names and types (for example, `event_name_1`, `event_type_1`) are kept as categorical text features and are used for overlays and group comparisons rather than one-hot encoded columns to keep storage low.  
-- **Date features:** from the `date` column the dashboard can derive day-of-week, week-of-year, and similar calendar encodings when needed (for example, the day-of-week calculation used in the auto-insights section above).  
+- **Date features:** from the `date` column we can derive day-of-week, week-of-year, and similar calendar encodings when needed (for example, the day-of-week calculation used in the auto-insights section above).  
 - **Identifiers:** `store_id`, `item_id`, `dept_id`, and `cat_id` remain as encoded categorical keys that drive filtering, grouping, and ranking in later tabs.
 
-This section explicitly documents the **encoding choices** that are applied after the raw CSVs are combined.
+This section explicitly documents the **encoding choices** that were applied after the raw CSVs were combined.
 """
     )
 
@@ -525,6 +506,96 @@ with tabs[2]:
                 "Weekly seasonal baseline mirrors the recent weekly cycle; moving average smooths short-term noise.",
                 "Use both as bookends; reality will vary with price and events.",
             )
+
+            # ---- ADDED: Final-project model-based forecast comparison (feature engineering + 2 ML models) ----
+            st.markdown("#### Model-based forecast comparison (final project)")
+
+            if len(series) >= 60:
+                # Feature engineering: lag features and day-of-week
+                df_model = series.to_frame(name="sales").copy()
+                for lag in range(1, 8):
+                    df_model[f"lag_{lag}"] = df_model["sales"].shift(lag)
+                df_model["dow"] = df_model.index.dayofweek  # 0=Mon,...,6=Sun
+
+                df_model = df_model.dropna()
+                feature_cols = [c for c in df_model.columns if c != "sales"]
+                X = df_model[feature_cols].values
+                y = df_model["sales"].values
+
+                # Hold out the last 28 days for evaluation
+                if len(df_model) > 56:
+                    split = -28
+                else:
+                    split = int(len(df_model) * 0.8)
+
+                X_train, X_test = X[:split], X[split:]
+                y_train, y_test = y[:split], y[split:]
+
+                # Model 1: LinearRegression on engineered features
+                lr_model = LinearRegression().fit(X_train, y_train)
+                preds_lr = lr_model.predict(X_test)
+
+                # Model 2: RandomForestRegressor on same features
+                rf_model = RandomForestRegressor(
+                    n_estimators=150,
+                    random_state=42,
+                    n_jobs=-1,
+                ).fit(X_train, y_train)
+                preds_rf = rf_model.predict(X_test)
+
+                rmse_lr = float(np.sqrt(mean_squared_error(y_test, preds_lr)))
+                rmse_rf = float(np.sqrt(mean_squared_error(y_test, preds_rf)))
+                mape_lr = float(mean_absolute_percentage_error(y_test, preds_lr) * 100)
+                mape_rf = float(mean_absolute_percentage_error(y_test, preds_rf) * 100)
+
+                metrics = pd.DataFrame(
+                    {
+                        "Model": [
+                            "LinearRegression (lags + day-of-week)",
+                            "RandomForest (lags + day-of-week)",
+                        ],
+                        "RMSE": [rmse_lr, rmse_rf],
+                        "MAPE %": [mape_lr, mape_rf],
+                    }
+                )
+
+                st.dataframe(
+                    metrics.style.format({"RMSE": "{:.2f}", "MAPE %": "{:.1f}"}),
+                    use_container_width=True,
+                )
+
+                # Plot actual vs predictions on the holdout window
+                dates_test = df_model.index[split:]
+                fig_models = px.line()
+                fig_models.add_scatter(
+                    x=dates_test,
+                    y=y_test,
+                    name="Actual (holdout)",
+                )
+                fig_models.add_scatter(
+                    x=dates_test,
+                    y=preds_lr,
+                    name="LinearRegression (pred)",
+                )
+                fig_models.add_scatter(
+                    x=dates_test,
+                    y=preds_rf,
+                    name="RandomForest (pred)",
+                )
+                fig_models.update_layout(
+                    xaxis_title="Date",
+                    yaxis_title="Units",
+                    title="Model comparison on holdout window",
+                )
+                st.plotly_chart(fig_models, use_container_width=True)
+
+                describe_chart(
+                    "Model-based forecast comparison",
+                    "Two supervised models are fit on engineered features (lags and day-of-week). The table summarizes RMSE and MAPE on the holdout window, and the line chart shows how well each model tracks actual demand.",
+                    "Use this section to demonstrate model quality against a concrete test period and to justify which model would be used for future production forecasts.",
+                )
+            else:
+                st.caption("Not enough history yet for a stable supervised model comparison (needs ≈ 60+ days).")
 
 # ===================== Tab 3: Price Sensitivity =====================
 with tabs[3]:
@@ -748,9 +819,9 @@ Sales {direction} {abs(k['wow_pct']):.1f}% vs the prior week. {interpretation_bi
             "Item": item_sel,
             "Period Start": str(start_ts.date()),
             "Period End": str(end_ts.date()),
-            "Avg Units/Day": k["avg_units"],
-            "Avg Price/Unit": k["avg_price"],
-            "Week-over-Week %": k["wow_pct"],
+            "Avg Units/Day": k['avg_units'],
+            "Avg Price/Unit": k['avg_price'],
+            "Week-over-Week %": k['wow_pct'],
             "Elasticity": elas["elasticity"] if elas else None,
         }
         st.download_button(
