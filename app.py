@@ -427,6 +427,25 @@ The project uses a **targeted imputation approach** focused on price:
 The violin plot above is used as an **imputation diagnostic** to show the distribution of filled prices and to confirm that the carry-fill produced realistic values.
 """
     )
+    st.markdown(
+        """
+**Error handling and data-safety controls**
+
+The dashboard includes several layers of error handling to keep every tab stable, even when the user selects extreme filters or when the underlying data contains gaps or missing fields:
+
+- **KPI safety:** all KPI and summary calculations use `safe_num` to prevent division-by-zero, NaN propagation, or invalid arithmetic. When a value cannot be computed, the function returns a clean placeholder instead of breaking the page.  
+- **Empty-slice detection:** before any chart, metric, or model is rendered, the selected data slice is checked for emptiness. If the filters produce zero rows, the app shows a clear message explaining that no data matches the selection instead of attempting to train models or draw empty figures.  
+- **Model input validation:** forecasting horizons, scenario multipliers, and user-controlled parameters are restricted to valid numeric ranges. If the user enters an out-of-range value, the app resets it to a supported default to prevent model crashes.  
+- **Safe model execution:** training and forecasting operations (Linear Regression, Random Forest, seasonal naïve, and moving-average models) are wrapped in controlled blocks. If a model fails due to an edge case or insufficient data, the dashboard displays a non-technical explanation instead of a Python error.  
+- **Data-loading resilience:** when `calendar.csv`, `sell_prices.csv`, and `sales_train_validation.csv` are merged, the pipeline checks for missing columns or unexpected structures. If a file lacks optional fields, the app warns the user but continues by defaulting to safe values.  
+- **Visualization safeguards:** all plots validate that required columns exist and contain usable numeric values. When an issue is detected, the page avoids rendering the figure and instead displays guidance on how to adjust filters or inputs.
+
+This section documents the **error-handling design** implemented across the dashboard to ensure that every tab remains responsive, interpretable, and resilient to bad inputs.
+"""
+
+    )
+
+
 
 # ===================== Tab 1: Overview =====================
 with tabs[1]:
