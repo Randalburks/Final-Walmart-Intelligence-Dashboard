@@ -1,6 +1,6 @@
 # Final Project Walmart Intelligence Dashboard - Executive Sales, Pricing, Forecasting & Scenario Dashboard
 
-### Michigan State University | CMSE 830 Midterm Project  
+### Michigan State University | CMSE 830 Final Project  
 **Author:** Randal Burks  
 **Purpose:** This project delivers an interactive, executive-ready dashboard that summarizes key sales insights from Walmart’s M5 dataset. It connects descriptive, diagnostic, and prescriptive analytics—showing what happened, why it happened, and what actions to take.
 
